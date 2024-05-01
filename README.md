@@ -33,3 +33,9 @@ zig build test
 ```bash
 zig build cdb
 ```
+
+# @TODO!:
+
+- [] Add GTK into the Zig Build System
+- [] Create a File System Abstraction for support on multiple OS
+- [] Create a UI using GTK that works with it
