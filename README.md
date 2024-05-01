@@ -5,3 +5,31 @@ Written Completely in C, and using Zig as a build system. this project is meant 
 1. Cache the Folder/File System
 2. Detect Changes and Update Cache
 3. Cache using the least storage, and fastest speed
+
+# For Development:
+
+1. Install Zig
+
+# To Build:
+
+```bash
+zig build
+```
+
+# To Run:
+
+```bash
+zig build run
+```
+
+# To Test:
+
+```bash
+zig build test
+```
+
+# To Get Compile_COmmands.json for intellisense
+
+```bash
+zig build cdb
+```
