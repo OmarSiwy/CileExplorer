@@ -18,7 +18,6 @@ pub fn build(b: *std.Build) void {
     // library.addCSourceFiles(try globFiles("src", FileType.CSource), &.{
     // "-std=c99",
     // });
-
     const cLib = b.addStaticLibrary(.{
         .name = "cLib",
         .target = target,
@@ -47,6 +46,11 @@ pub fn build(b: *std.Build) void {
         .path = "include",
     });
     Explorer.linkLibrary(cLib);
+    const gtkOptions = .{
+        .needed = true,
+        .use_pkg_config = .yes,
+    };
+    Explorer.linkSystemLibrary2("gtk+-3.0", gtkOptions);
     targets.append(Explorer) catch @panic("OOM");
 
     // Add Libraries ____________________________________________________________________________________
