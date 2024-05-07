@@ -8,16 +8,6 @@ pub fn build(b: *std.Build) void {
     const skip_tests = b.option(bool, "skip-test", "When set, skips the tests") orelse false;
     const skip_run = b.option(bool, "skip-run", "When set, skips the run") orelse false;
 
-    // This is how you would add a static library to this build
-    // const library = b.addStaticLibrary(.{});
-    // library.setTarget(target);
-    // library.setBuildMode(mode);
-    // library.linkLibC();
-    // library.force_pic = true;
-    // const cSources = try globFiles("src", FileType.CSource);
-    // library.addCSourceFiles(try globFiles("src", FileType.CSource), &.{
-    // "-std=c99",
-    // });
     const cLib = b.addStaticLibrary(.{
         .name = "cLib",
         .target = target,
@@ -31,32 +21,42 @@ pub fn build(b: *std.Build) void {
         "src/prompt.c", // Add other C files as needed
     }, &.{"-std=c99"});
     cLib.force_pic = true;
+    const gtkOptions = .{
+        .needed = true,
+        .use_pkg_config = .yes,
+    };
+    cLib.addIncludePath(.{
+        .path = "OpenCL-Headers",
+    });
+    cLib.linkSystemLibrary2("gtk+-3.0", gtkOptions);
+
+    switch (target.getOs().tag) {
+        .windows => {
+            return; // Windows is not suported
+        },
+        .macos => {
+            cLib.linkFramework("OpenCL");
+        },
+        else => {
+            cLib.linkSystemLibrary("OpenCL");
+        },
+    }
     targets.append(cLib) catch @panic("OOM");
 
     // Create the Executable
     const Explorer = b.addExecutable(.{
         .name = "CileExplorer",
-        .root_source_file = .{ .path = "src/main.c" }, // Main File
+        .root_source_file = .{ .path = "src/main.zig" }, // Main File
         .optimize = optimize,
         .target = target,
     });
 
-    Explorer.linkLibC(); // Link only if libc is needed
+    Explorer.linkLibC();
     Explorer.addIncludePath(.{
         .path = "include",
     });
     Explorer.linkLibrary(cLib);
-    const gtkOptions = .{
-        .needed = true,
-        .use_pkg_config = .yes,
-    };
-    Explorer.linkSystemLibrary2("gtk+-3.0", gtkOptions);
     targets.append(Explorer) catch @panic("OOM");
-
-    // Add Libraries ____________________________________________________________________________________
-    //Explorer.linkLibrary(); // Add
-    //Explorer.addIncludePath(.{ .path = "deps/library"}); // For every library added make to include it here
-    // __________________________________________________________________________________________________
 
     createStep(b, "cdb", targets.toOwnedSlice() catch @panic("OOM"));
 
