@@ -111,7 +111,7 @@ fn run_test(device: c.cl_device_id) OpenCL.CLError!void {
     info("** done, exiting **", .{});
 }
 
-const FuncPtr = fn (input: [*c]const u8) callconv(.C) [*c]const u8;
-fn Search(input: [*c]const u8) callconv(.C) [*c]const u8 {
+pub const FuncPtr = fn (input: [*c]const u8) callconv(.C) [*c]const u8;
+pub fn Search(input: [*c]const u8) callconv(.C) [*c]const u8 {
     return input;
 }
