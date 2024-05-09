@@ -7,6 +7,12 @@ Written Completely in C and Zig, and using Zig as a build system. this project i
 3. Cache using the least storage, and fastest speed
 4. GPU Powered, Parrallel
 
+# Why Zig?
+
+Zig Offers a much smaller build option rather than having different C Compilers for each Operating System (Result: 200mb build system -> 40mb)
+
+Zig Also Offers in-house testing by importing C header files straight into it for testing, this beats Google Testing for C and removes the need for a C++ Compiler on board.
+
 # @TODO!:
 
 ### Performance Specific
