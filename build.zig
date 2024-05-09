@@ -32,7 +32,8 @@ pub fn build(b: *std.Build) void {
         .path = "include",
     });
     cLib.addCSourceFiles(&.{
-        "src/GTK_Entry.c", // Add other C files as needed
+        "src/helper/Search.c",
+        "src/helper/GraphicsUser.c", // Add other C files as needed
     }, &cflags);
     cLib.force_pic = true;
     const gtkOptions = .{
@@ -59,7 +60,7 @@ pub fn build(b: *std.Build) void {
     // Create the Executable
     const Explorer = b.addExecutable(.{
         .name = "CileExplorer",
-        .root_source_file = .{ .path = "src/main.zig" }, // Main File
+        .root_source_file = .{ .path = "src/main.c" }, // Main File
         .optimize = optimize,
         .target = target,
     });
