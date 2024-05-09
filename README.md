@@ -7,35 +7,17 @@ Written Completely in C and Zig, and using Zig as a build system. this project i
 3. Cache using the least storage, and fastest speed
 4. GPU Powered, Parrallel
 
-# For Development:
-
-1. Install Zig
-
-# To Build:
-
-```bash
-zig build
-```
-
-# To Run:
-
-```bash
-zig build run
-```
-
-# To Test:
-
-```bash
-zig build test
-```
-
-# To Get Compile_COmmands.json for intellisense
-
-```bash
-zig build cdb
-```
-
 # @TODO!:
 
-- [] Create a File System Abstraction for support on multiple OS
-- [] Create a UI using GTK that works with it
+### Performance Specific
+
+-[] Create a Function that can be used to Get All Folders in a Directory
+-[] Create a Function that Searches Recursively (Multi-Threaded) through every directory, and then pushes the checking to a Filter (Booyre Moore)
+-[] Add the Option to Filter Folders using OpenCL while CPU continues the Searching
+
+### UI Specific
+
+-[] Create a Function that returns the Icon of a Folder/File
+-[] Create the Sidebar using GTK
+-[] Create the TopSearch Bar using GTK
+-[] Create the Screen that shows files using GTK
