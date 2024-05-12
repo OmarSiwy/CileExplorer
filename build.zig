@@ -14,6 +14,7 @@ pub fn build(b: *std.Build) void {
         "-W",
         "-g",
         "-O2",
+        "-ffast-math",
         "-fstack-protector-strong",
         "-D_FORTIFY_SOURCE=2",
         "-Wstrict-prototypes",
@@ -40,7 +41,7 @@ pub fn build(b: *std.Build) void {
         .needed = true,
     };
     cLib.addIncludePath(.{
-        .path = "OpenCL-Headers",
+        .path = "_deps/include",
     });
     cLib.linkSystemLibrary2("gtk+-3.0", gtkOptions);
 
@@ -81,7 +82,7 @@ pub fn build(b: *std.Build) void {
     // Add a Convenience Step to Test Application, This is not needed
     const test_step = b.step("test", "Run unit tests");
     const unit_tests = b.addTest(.{
-        .root_source_file = .{ .path = "tests/c_test.zig" },
+        .root_source_file = .{ .path = "tests/gpu_test.zig" },
         .target = target,
     });
 

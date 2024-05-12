@@ -3,3 +3,5 @@
 /compile_commands.json
 /compile_commands/
 /.cache
+/include
+/_deps/
