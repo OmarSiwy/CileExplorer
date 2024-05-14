@@ -60,7 +60,3 @@ inline GtkWidget* GetFileIconAsWidget(const char* filepath) {
   
   return image;
 }
-
-void AhoCorasick(const char* text, const char* pattern, int* matches, int text_length, int pat_length) {
-
-}

@@ -14,7 +14,7 @@
 #include <string.h>
 #include <time.h>
 
-#define PROGRAM_FILE "src/helper/RabinKarp.cl"
+#define PROGRAM_FILE "src/helper/AhoCorasick.cl"
 #define KERNEL_FUNC "RabinKarp"
 #define ARRAY_SIZE 64
 

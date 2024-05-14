@@ -28,7 +28,7 @@ test "Rabin-Karp Match Test" {
     }
 
     // Call the C function
-    const matches = C.RabinKarpMatch(pattern, c_haystack.ptr, num_strings, &match_count);
+    const matches = C.StartMatch(pattern, c_haystack.ptr, num_strings, &match_count);
 
     // Check results and output matches
     try std.testing.expect(match_count > 0);
