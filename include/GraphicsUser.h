@@ -6,7 +6,7 @@
 */
 
 #define CL_TARGET_OPENCL_VERSION 120
-#include <OpenCl/cl.h>
+#include <CL/cl.h> // Use standard OpenCL include path
 
 #include <math.h>
 #include <stdio.h>
@@ -14,20 +14,26 @@
 #include <string.h>
 #include <time.h>
 
-#define PROGRAM_FILE "src/helper/AhoCorasick.cl"
-#define KERNEL_FUNC "RabinKarp"
-#define ARRAY_SIZE 64
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-extern cl_device_id CreateDevice(void);
-extern cl_program BuildProgram(cl_context ctx, cl_device_id dev, const char* filename);
+cl_device_id CreateDevice(void);
+cl_program BuildProgram(cl_context ctx, cl_device_id dev, const char* filename);
 
 /*
-* Uses OpenCL to search for a pattern in a haystack, powered by gpu
+* Uses OpenCL to search for a pattern in a haystack, powered by GPU
 *
-* @param pattern The filename to search for
-* @param haystack the list of files to search through
-* @return the filepaths that matches the pattern
+* @param pattern The pattern to search for
+* @param haystack The list of strings to search through
+* @param num_strings The number of strings in the haystack
+* @param match_count Output parameter for the number of matches found
+* @return The filepaths that match the pattern
 */
-extern const char** StartMatch(const char* pattern, const char** haystack, int num_strings, int* match_count);
+const char** StartMatch(const char* pattern, const char** haystack, int num_strings, int* match_count);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // GRAPHICS_USER_H

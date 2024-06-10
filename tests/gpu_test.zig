@@ -19,25 +19,24 @@ test "Rabin-Karp Match Test" {
     var match_count: c_int = 0;
 
     // Allocate space for C pointer array
-    const c_haystack = try allocator.alloc(?[*]const u8, haystack.len);
+    const c_haystack = try allocator.alloc([*]const u8, haystack.len);
     defer allocator.free(c_haystack);
 
     // Convert Zig strings to C pointers
-    for (haystack, 0..3) |item, i| {
+    for (haystack) |item, i| {
         c_haystack[i] = item.ptr;
     }
 
     // Call the C function
-    const matches = C.StartMatch(pattern, c_haystack.ptr, num_strings, &match_count);
+    const matches = C.StartMatch(pattern.ptr, c_haystack.ptr, num_strings, &match_count);
 
     // Check results and output matches
     try std.testing.expect(match_count > 0);
     if (match_count > 0) {
-        const ptr: [*]const [*]const u8 = @ptrCast(matches);
-        const count: usize = @intCast(match_count);
-        const positive_match_count: usize = @intCast(count);
-        for (ptr[0..positive_match_count], 0..positive_match_count) |match, i| {
-            std.debug.print("Match found: {}\n", .{match[i]});
+        const ptr = @ptrCast([*][*]const u8, matches);
+        const positive_match_count: usize = @intCast(match_count);
+        for (positive_match_count) |i| {
+            std.debug.print("Match found: {}\n", .{ptr[i]});
         }
     }
 }

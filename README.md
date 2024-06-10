@@ -1,11 +1,9 @@
 # Accelerated File Explorer (Cile Explorer)
 
-Written Completely in C and Zig, and using Zig as a build system. this project is meant to reach the max speed that a File Explorer is supposed to go using:
+Written Completely in C and Zig, using Zig as a build system. this project is meant to reach the max speed that a File Explorer is supposed to go above and beyond using these new techniques:
 
-1. Cache the Folder/File System
-2. Detect Changes and Update Cache
-3. Cache using the least storage, and fastest speed
-4. GPU Powered, Parrallel
+1. String comparisong using aho-corasick <= (GPU Powered)
+2. Cache the Folder/File System to avoid researching same directory if already searched (**working on this currently**)
 
 # Why Zig?
 
@@ -17,8 +15,6 @@ Zig Also Offers in-house testing by importing C header files straight into it fo
 
 ### Performance Specific
 
--[] Create a Function that can be used to Get All Folders in a Directory
--[] Create a Function that Searches Recursively (Multi-Threaded) through every directory, and then pushes the checking to a Filter (Booyre Moore)
 -[] Add the Option to Filter Folders using OpenCL while CPU continues the Searching
 
 ### UI Specific
