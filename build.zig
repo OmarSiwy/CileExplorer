@@ -1,176 +1,157 @@
 const std = @import("std");
-const ArrayList = std.ArrayList;
+const builtin = @import("builtin");
 
-pub fn build(b: *std.Build) void {
+pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-    var targets = std.ArrayList(*std.Build.CompileStep).init(b.allocator);
 
-    const cflags = .{
-        "-std=c99",
-        "-gen-cdb-fragment-path",
-        "compile_commands",
-        "-Wall",
-        "-W",
-        "-g",
-        "-O2",
-        "-ffast-math",
-        "-fstack-protector-strong",
-        "-D_FORTIFY_SOURCE=2",
-        "-Wstrict-prototypes",
-        "-Wwrite-strings",
-        "-Wno-missing-field-initializers",
-        "-fno-omit-frame-pointer",
+    // Compiler flags
+    const cflags = &.{
+        "-std=c99",    "-gen-cdb-fragment-path",   "compile_commands",    "-Wall",               "-W",              "-g",                              "-O2",
+        "-ffast-math", "-fstack-protector-strong", "-D_FORTIFY_SOURCE=2", "-Wstrict-prototypes", "-Wwrite-strings", "-Wno-missing-field-initializers", "-fno-omit-frame-pointer",
+    };
+    const gtkflags = try getPkgConfigFlags(b);
+
+    // CUDA cache setup
+    const cuda_cache_dir = b.pathJoin(&.{ ".zig-cache", "cuda" });
+    std.fs.cwd().makePath(cuda_cache_dir) catch |err| {
+        std.debug.print("Failed to create CUDA cache directory: {}\n", .{err});
+        return err;
     };
 
+    // CUDA compilation step
+    const cuda_step = b.addSystemCommand(&[_][]const u8{
+        "nvcc",                                        "-c",                                               "include/cuda/search_kernel.cu", "-o",         ".zig-cache/cuda/search_kernel.o",
+        "-allow-unsupported-compiler",                 "--compiler-options",                               "-fPIC",                         "-O2",        "--std=c++14",
+        "-DTHRUST_HOST_SYSTEM=THRUST_HOST_SYSTEM_CPP", "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CUDA", "-DTHRUST_DISABLE_EXCEPTIONS",   "-Xcompiler", "-fPIC",
+    });
+
+    // Create static library
     const cLib = b.addStaticLibrary(.{
         .name = "cLib",
         .target = target,
         .optimize = optimize,
     });
-    cLib.linkLibC();
-    cLib.addIncludePath(.{
-        .path = "include",
-    });
-    cLib.addCSourceFiles(&.{
-        "src/helper/Search.c",
-        "src/helper/GraphicsUser.c", // Add other C files as needed
-    }, &cflags);
-    cLib.force_pic = true;
-    const gtkOptions = .{
-        .needed = true,
-    };
-    cLib.addIncludePath(.{
-        .path = "_deps/include",
-    });
-    cLib.linkSystemLibrary2("gtk+-3.0", gtkOptions);
+    try addCommonIncludes(cLib, gtkflags);
 
-    switch (target.getOs().tag) {
-        .windows => {
-            return; // Windows is not suported
-        },
-        .macos => {
-            cLib.linkFramework("OpenCL");
-        },
-        else => {
-            cLib.linkSystemLibrary("OpenCL");
-        },
-    }
-    targets.append(cLib) catch @panic("OOM");
+    // Link CUDA to library
+    linkCuda(cLib, cuda_step);
 
-    // Create the Executable
+    // Add source files to library
+    cLib.addCSourceFiles(.{
+        .flags = cflags,
+        .files = &.{ "src/helper/Search.c", "src/Layouts/ExplorerLayout.c", "src/Pages/Sidebar.c", "src/Pages/MainPage.c", "src/Pages/Topbar.c" },
+    });
+
+    // Create the executable
     const Explorer = b.addExecutable(.{
         .name = "CileExplorer",
-        .root_source_file = .{ .path = "src/main.c" }, // Main File
         .optimize = optimize,
         .target = target,
     });
-
-    Explorer.linkLibC();
-    Explorer.addIncludePath(.{
-        .path = "include",
+    Explorer.addCSourceFile(.{
+        .file = .{ .cwd_relative = "main.c" },
+        .flags = cflags,
     });
-    Explorer.linkLibrary(cLib);
-    targets.append(Explorer) catch @panic("OOM");
+    try addCommonIncludes(Explorer, gtkflags);
 
-    // Add a Convenience Run Step to Run Application, This is not needed
+    // Link library and CUDA to executable
+    Explorer.linkLibrary(cLib);
+    linkCuda(Explorer, null);
+
+    // Add convenience steps
+    // Run Step
     b.installArtifact(Explorer);
     const run_step = b.step("run", "Run the Application");
     const run_exe = b.addRunArtifact(Explorer);
     run_step.dependOn(&run_exe.step);
 
-    // Add a Convenience Step to Test Application, This is not needed
+    // Test Step
     const test_step = b.step("test", "Run unit tests");
     const unit_tests = b.addTest(.{
-        .root_source_file = .{ .path = "tests/gpu_test.zig" },
+        .root_source_file = .{ .cwd_relative = "tests/main_test.zig" },
         .target = target,
     });
-
-    unit_tests.linkLibC();
-
-    unit_tests.addIncludePath(.{
-        .path = "include",
-    });
+    try addCommonIncludes(unit_tests, gtkflags);
     unit_tests.linkLibrary(cLib);
+    linkCuda(unit_tests, null);
 
     const run_unit_tests = b.addRunArtifact(unit_tests);
     test_step.dependOn(&run_unit_tests.step);
 
-    const write_compile_commands_step = b.step("writecc", "Write compile_commands.json");
-    write_compile_commands_step.makeFn = maybeCreateCompileCommands;
-    write_compile_commands_step.dependOn(&Explorer.step);
+    // Add compile commands generation
+    AddCompileCommandStep(b, cLib);
 }
 
-pub fn maybeCreateCompileCommands(_: *const std.build.Builder.Step, _: *std.Progress.Node) !void {
-    const dir = try std.fs.cwd().openIterableDir("compile_commands", .{});
-    var iterator = dir.iterate();
+// Helper functions
+fn linkCuda(step: *std.Build.Step.Compile, cuda_step: ?*std.Build.Step.Run) void {
+    if (cuda_step) |cs| { // Unwrap the optional
+        step.step.dependOn(&cs.step);
+        step.addObjectFile(.{ .cwd_relative = ".zig-cache/cuda/search_kernel.o" });
+    }
+    step.addIncludePath(.{ .cwd_relative = "/opt/cuda/include" });
+    step.addLibraryPath(.{ .cwd_relative = "/usr/local/cuda/lib64" });
+    step.linkSystemLibrary("cudart");
+    step.linkSystemLibrary("cuda");
+}
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = gpa.allocator();
+fn AddCompileCommandStep(b: *std.Build, lib: *std.Build.Step.Compile) void {
+    const zcc = @import("Compile_Commands.zig");
+    var targets_files = std.ArrayList(*std.Build.Step.Compile).init(b.allocator);
+    defer targets_files.deinit();
+    targets_files.append(lib) catch @panic("OOM");
+    zcc.createStep(b, "cdb", targets_files.toOwnedSlice() catch @panic("OOM"));
+}
 
-    defer {
-        if (.ok != gpa.deinit()) {
-            @panic("OFSMC!  Some memory leaked!");
+fn getPkgConfigFlags(b: *std.Build) ![]const []const u8 {
+    var args = std.ArrayList([]const u8).init(b.allocator);
+
+    const essential_includes = [_][]const u8{
+        "gtk-3.0", "glib-2.0", "cairo", "pango-1.0", "gdk-pixbuf-2.0", "atk-1.0",
+    };
+
+    const result = try std.process.Child.run(.{
+        .allocator = b.allocator,
+        .argv = &.{ "pkg-config", "--cflags", "gtk+-3.0" },
+    });
+
+    // gtk
+    var it = std.mem.splitScalar(u8, std.mem.trim(u8, result.stdout, " \n"), ' ');
+    while (it.next()) |flag| {
+        if (flag.len == 0) continue;
+        for (essential_includes) |essential| {
+            if (std.mem.indexOf(u8, flag, essential) != null) {
+                try args.append(flag);
+                break;
+            }
         }
     }
 
-    var my_file = std.fs.cwd().createFile("compile_commands.json", .{}) catch |err| {
-        std.debug.print("\nError: {}\n", .{err});
-        return;
-    };
-    defer my_file.close();
+    return args.toOwnedSlice();
+}
 
-    var comma: bool = false;
+fn addCommonIncludes(compile_step: *std.Build.Step.Compile, gtk_flags: []const []const u8) !void {
+    compile_step.linkLibC();
 
-    var wrote_bytes = my_file.write("[\n") catch |err| {
-        std.debug.print("\nError writing: {}\n", .{err});
-        return err;
-    };
+    // Add project-specific includes
+    compile_step.addIncludePath(.{ .cwd_relative = "include" });
 
-    while (try iterator.next()) |path| {
-        var relative_name = std.ArrayList(u8).init(allocator);
-        defer relative_name.deinit();
-
-        relative_name.appendSlice("compile_commands/") catch |err| {
-            std.debug.print("\nError building string: {}\n", .{err});
-            return err;
-        };
-
-        relative_name.appendSlice(path.name) catch |err| {
-            std.debug.print("\nError building string: {}\n", .{err});
-            return err;
-        };
-
-        var json_file = try std.fs.cwd().openFile(relative_name.items, .{});
-        defer json_file.close();
-
-        var cc_json_string: [1024 * 1024]u8 = undefined;
-        const bytes_read = try json_file.read(&cc_json_string);
-
-        var last_byte: usize = bytes_read;
-        if (cc_json_string[(bytes_read - 2)] == ',') {
-            last_byte -= 2;
+    // Add GTK and related library include paths from pkg-config flags
+    for (gtk_flags) |gtk| {
+        if (std.mem.startsWith(u8, gtk, "-I")) {
+            compile_step.addIncludePath(.{ .cwd_relative = gtk[2..] });
         }
-
-        const stream_bytes = cc_json_string[0..last_byte];
-
-        if (comma) {
-            wrote_bytes = my_file.write(",") catch |err| {
-                std.debug.print("\nError writing: {}\n", .{err});
-                return err;
-            };
-        }
-
-        wrote_bytes = my_file.write(stream_bytes) catch |err| {
-            std.debug.print("\nError writing: {}\n", .{err});
-            return err;
-        };
-
-        comma = true;
     }
 
-    wrote_bytes = my_file.write("\n]\n") catch |err| {
-        std.debug.print("\nError: {}\n", .{err});
-        return err;
-    };
+    // Add linking for GTK and GDK Pixbuf libraries
+    switch (builtin.os.tag) {
+        .macos => {
+            std.debug.print("Mac\n\n", .{});
+            compile_step.linkFramework("gtk+-3.0");
+        },
+        else => {
+            std.debug.print("Windows/Linux\n\n", .{});
+            compile_step.linkSystemLibrary("gtk+-3.0");
+        },
+    }
 }

@@ -1,7 +1,5 @@
-/zig-cache/
-/zig-out/
-/compile_commands.json
-/compile_commands/
-/.cache
-/include
-/_deps/
+.zig-cache/
+zig-out/
+compile_commands.json
+compile_commands/
+.cache

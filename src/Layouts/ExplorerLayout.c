@@ -1,16 +1,28 @@
-#include "ExplorerLayout.h"
-#include "gtk/gtk.h"
+#include "Layouts/ExplorerLayout.h"
+#include "Pages/MainPage.h"
+#include "Pages/Sidebar.h"
+#include "Pages/Topbar.h"
 
-void ApplyGridLayout(GtkGrid *grid, int WidgetNumber, ...) {
-  va_list args;
-  va_start(args, WidgetNumber);
+GtkWidget *explorer_layout_new(void) {
+  GtkWidget *grid = gtk_grid_new();
+  gtk_grid_set_column_homogeneous(GTK_GRID(grid), FALSE);
+  gtk_grid_set_row_homogeneous(GTK_GRID(grid), FALSE);
 
-  WidgetPosition* widget;
-  for (int i = 0; i < WidgetNumber; i++) {
-    widget = va_arg(args, WidgetPosition*);
-    gtk_grid_attach(GTK_GRID(grid), widget->widget, widget->left, widget->top, widget->width, widget->height);
-  }
+  // Top bar
+  GtkWidget *top_bar = top_bar_new("/home/username");
 
-  va_end(args);
-  gtk_widget_show_all(GTK_WIDGET(grid));
+  // Side bar
+  GtkWidget *side_bar = side_bar_new();
+
+  // Main page
+  GtkWidget *main_page = main_page_new();
+
+  // Attach widgets
+  gtk_grid_attach(GTK_GRID(grid), top_bar, 0, 0, 2,
+                  1); // Top bar spans 2 columns
+  gtk_grid_attach(GTK_GRID(grid), side_bar, 0, 1, 1, 1); // Side bar on the left
+  gtk_grid_attach(GTK_GRID(grid), main_page, 1, 1, 1,
+                  1); // Main page on the right
+
+  return grid;
 }
