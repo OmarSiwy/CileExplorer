@@ -195,7 +195,7 @@ jobs:
     - name: Setup Zig
       uses: goto-bus-stop/setup-zig@v2
       with:
-        version: master
+        version: 0.14.0
 
     - name: Install dependencies (MSYS2)
       uses: msys2/setup-msys2@v2
@@ -270,7 +270,7 @@ jobs:
     - name: Setup Zig
       uses: goto-bus-stop/setup-zig@v2
       with:
-        version: master
+        version: 0.14.0
 
     - name: Install dependencies
       run: |
