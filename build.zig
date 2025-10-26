@@ -1,5 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const zcc = @import("CC.zig");
 
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
@@ -12,6 +13,19 @@ pub fn build(b: *std.Build) !void {
     };
     const gtkflags = try getPkgConfigFlags(b);
 
+    // Get CUDA paths from environment (set by Nix)
+    const cuda_include = std.process.getEnvVarOwned(b.allocator, "NIX_CUDA_INCLUDE_PATH") catch blk: {
+        std.debug.print("Warning: NIX_CUDA_INCLUDE_PATH not set, using fallback\n", .{});
+        break :blk try b.allocator.dupe(u8, "/opt/cuda/include");
+    };
+    const cuda_lib = std.process.getEnvVarOwned(b.allocator, "NIX_CUDA_LIB_PATH") catch blk: {
+        std.debug.print("Warning: NIX_CUDA_LIB_PATH not set, using fallback\n", .{});
+        break :blk try b.allocator.dupe(u8, "/usr/local/cuda/lib64");
+    };
+
+    std.debug.print("Using CUDA include: {s}\n", .{cuda_include});
+    std.debug.print("Using CUDA lib: {s}\n", .{cuda_lib});
+
     // CUDA cache setup
     const cuda_cache_dir = b.pathJoin(&.{ ".zig-cache", "cuda" });
     std.fs.cwd().makePath(cuda_cache_dir) catch |err| {
@@ -19,28 +33,54 @@ pub fn build(b: *std.Build) !void {
         return err;
     };
 
-    // CUDA compilation step
+    // CUDA compilation step with include path
+    const cuda_include_flag = try std.fmt.allocPrint(b.allocator, "-I{s}", .{cuda_include});
+    
     const cuda_step = b.addSystemCommand(&[_][]const u8{
-        "nvcc",                                        "-c",                                               "include/cuda/search_kernel.cu", "-o",         ".zig-cache/cuda/search_kernel.o",
-        "-allow-unsupported-compiler",                 "--compiler-options",                               "-fPIC",                         "-O2",        "--std=c++14",
-        "-DTHRUST_HOST_SYSTEM=THRUST_HOST_SYSTEM_CPP", "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CUDA", "-DTHRUST_DISABLE_EXCEPTIONS",   "-Xcompiler", "-fPIC",
+        "nvcc",
+        "-c",
+        "include/cuda/search_kernel.cu",
+        "-o",
+        ".zig-cache/cuda/search_kernel.o",
+        cuda_include_flag,
+        "-allow-unsupported-compiler",
+        "--compiler-options",
+        "-fPIC",
+        "-O2",
+        "--std=c++14",
+        "-DTHRUST_HOST_SYSTEM=THRUST_HOST_SYSTEM_CPP",
+        "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CUDA",
+        "-DTHRUST_DISABLE_EXCEPTIONS",
+        "-Xcompiler",
+        "-fPIC",
     });
 
-    // Create static library
+    // Create static library (without system libraries linked)
     const cLib = b.addStaticLibrary(.{
         .name = "cLib",
         .target = target,
         .optimize = optimize,
     });
-    try addCommonIncludes(cLib, gtkflags);
+    
+    cLib.linkLibC();
+    cLib.addIncludePath(.{ .cwd_relative = "include" });
+    cLib.addIncludePath(.{ .cwd_relative = cuda_include });
+    
+    // Add GTK include paths (but don't link yet)
+    for (gtkflags) |gtk| {
+        if (std.mem.startsWith(u8, gtk, "-I")) {
+            cLib.addIncludePath(.{ .cwd_relative = gtk[2..] });
+        }
+    }
 
-    // Link CUDA to library
-    linkCuda(cLib, cuda_step);
+    // Add CUDA object file to library
+    cLib.step.dependOn(&cuda_step.step);
+    cLib.addObjectFile(.{ .cwd_relative = ".zig-cache/cuda/search_kernel.o" });
 
     // Add source files to library
     cLib.addCSourceFiles(.{
         .flags = cflags,
-        .files = &.{ "src/helper/Search.c", "src/Layouts/ExplorerLayout.c", "src/Pages/Sidebar.c", "src/Pages/MainPage.c", "src/Pages/Topbar.c" },
+        .files = &.{ "src/Search.c", "src/Pages/Sidebar.c", "src/Pages/MainPage.c", "src/Pages/Topbar.c" },
     });
 
     // Create the executable
@@ -49,19 +89,42 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
         .target = target,
     });
+    
     Explorer.addCSourceFile(.{
         .file = .{ .cwd_relative = "main.c" },
         .flags = cflags,
     });
-    try addCommonIncludes(Explorer, gtkflags);
+    
+    Explorer.linkLibC();
+    Explorer.addIncludePath(.{ .cwd_relative = "include" });
+    
+    // Add GTK include paths
+    for (gtkflags) |gtk| {
+        if (std.mem.startsWith(u8, gtk, "-I")) {
+            Explorer.addIncludePath(.{ .cwd_relative = gtk[2..] });
+        }
+    }
 
-    // Link library and CUDA to executable
+    // Link the static library
     Explorer.linkLibrary(cLib);
-    linkCuda(Explorer, null);
+    
+    // Link system libraries (GTK and CUDA) to executable
+    Explorer.linkSystemLibrary("gtk+-3.0");
+    
+    // Add CUDA library path and link CUDA libraries
+    var it = std.mem.splitScalar(u8, cuda_lib, ':');
+    while (it.next()) |lib_path| {
+        if (lib_path.len > 0) {
+            Explorer.addLibraryPath(.{ .cwd_relative = lib_path });
+        }
+    }
+    Explorer.linkSystemLibrary("cudart");
+    Explorer.linkSystemLibrary("cuda");
 
-    // Add convenience steps
-    // Run Step
+    // Install artifact
     b.installArtifact(Explorer);
+
+    // Run Step
     const run_step = b.step("run", "Run the Application");
     const run_exe = b.addRunArtifact(Explorer);
     run_step.dependOn(&run_exe.step);
@@ -72,9 +135,28 @@ pub fn build(b: *std.Build) !void {
         .root_source_file = .{ .cwd_relative = "tests/main_test.zig" },
         .target = target,
     });
-    try addCommonIncludes(unit_tests, gtkflags);
+    
+    unit_tests.linkLibC();
+    unit_tests.addIncludePath(.{ .cwd_relative = "include" });
+    
+    for (gtkflags) |gtk| {
+        if (std.mem.startsWith(u8, gtk, "-I")) {
+            unit_tests.addIncludePath(.{ .cwd_relative = gtk[2..] });
+        }
+    }
+    
     unit_tests.linkLibrary(cLib);
-    linkCuda(unit_tests, null);
+    unit_tests.linkSystemLibrary("gtk+-3.0");
+    
+    // Add CUDA to tests
+    it = std.mem.splitScalar(u8, cuda_lib, ':');
+    while (it.next()) |lib_path| {
+        if (lib_path.len > 0) {
+            unit_tests.addLibraryPath(.{ .cwd_relative = lib_path });
+        }
+    }
+    unit_tests.linkSystemLibrary("cudart");
+    unit_tests.linkSystemLibrary("cuda");
 
     const run_unit_tests = b.addRunArtifact(unit_tests);
     test_step.dependOn(&run_unit_tests.step);
@@ -83,20 +165,7 @@ pub fn build(b: *std.Build) !void {
     AddCompileCommandStep(b, cLib);
 }
 
-// Helper functions
-fn linkCuda(step: *std.Build.Step.Compile, cuda_step: ?*std.Build.Step.Run) void {
-    if (cuda_step) |cs| { // Unwrap the optional
-        step.step.dependOn(&cs.step);
-        step.addObjectFile(.{ .cwd_relative = ".zig-cache/cuda/search_kernel.o" });
-    }
-    step.addIncludePath(.{ .cwd_relative = "/opt/cuda/include" });
-    step.addLibraryPath(.{ .cwd_relative = "/usr/local/cuda/lib64" });
-    step.linkSystemLibrary("cudart");
-    step.linkSystemLibrary("cuda");
-}
-
 fn AddCompileCommandStep(b: *std.Build, lib: *std.Build.Step.Compile) void {
-    const zcc = @import("Compile_Commands.zig");
     var targets_files = std.ArrayList(*std.Build.Step.Compile).init(b.allocator);
     defer targets_files.deinit();
     targets_files.append(lib) catch @panic("OOM");
@@ -107,7 +176,7 @@ fn getPkgConfigFlags(b: *std.Build) ![]const []const u8 {
     var args = std.ArrayList([]const u8).init(b.allocator);
 
     const essential_includes = [_][]const u8{
-        "gtk-3.0", "glib-2.0", "cairo", "pango-1.0", "gdk-pixbuf-2.0", "atk-1.0",
+        "gtk-3.0", "glib-2.0", "cairo", "pango-1.0", "gdk-pixbuf-2.0", "atk-1.0", "harfbuzz",
     };
 
     const result = try std.process.Child.run(.{
@@ -115,7 +184,6 @@ fn getPkgConfigFlags(b: *std.Build) ![]const []const u8 {
         .argv = &.{ "pkg-config", "--cflags", "gtk+-3.0" },
     });
 
-    // gtk
     var it = std.mem.splitScalar(u8, std.mem.trim(u8, result.stdout, " \n"), ' ');
     while (it.next()) |flag| {
         if (flag.len == 0) continue;
@@ -128,30 +196,4 @@ fn getPkgConfigFlags(b: *std.Build) ![]const []const u8 {
     }
 
     return args.toOwnedSlice();
-}
-
-fn addCommonIncludes(compile_step: *std.Build.Step.Compile, gtk_flags: []const []const u8) !void {
-    compile_step.linkLibC();
-
-    // Add project-specific includes
-    compile_step.addIncludePath(.{ .cwd_relative = "include" });
-
-    // Add GTK and related library include paths from pkg-config flags
-    for (gtk_flags) |gtk| {
-        if (std.mem.startsWith(u8, gtk, "-I")) {
-            compile_step.addIncludePath(.{ .cwd_relative = gtk[2..] });
-        }
-    }
-
-    // Add linking for GTK and GDK Pixbuf libraries
-    switch (builtin.os.tag) {
-        .macos => {
-            std.debug.print("Mac\n\n", .{});
-            compile_step.linkFramework("gtk+-3.0");
-        },
-        else => {
-            std.debug.print("Windows/Linux\n\n", .{});
-            compile_step.linkSystemLibrary("gtk+-3.0");
-        },
-    }
 }

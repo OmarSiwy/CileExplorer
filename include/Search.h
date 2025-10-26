@@ -1,16 +1,12 @@
 #ifndef SEARCH_H
 #define SEARCH_H
-
 #include <gio/gio.h>
 #include <glib.h>
 #include <stdbool.h>
 
 typedef struct {
   char *filename;
-  unsigned char *icon_data; // Pointer to image data
-  int icon_width;
-  int icon_height;
-  int icon_channels;
+  void *icon_data; // GIcon Pointer
 } FileEntry;
 
 typedef struct {
@@ -20,23 +16,34 @@ typedef struct {
   int capacity;
 } FileBatch;
 
-/*
- * Given a directory path, the function will return a list of the names of all
- * the files in the directory
- *
- * @param dirpath the path to the directory
+/**
+ * List all files in a directory
+ * @param dirpath Directory path to scan
+ * @param file_count Output parameter for number of files found
+ * @return Array of FileEntry pointers, or NULL on error
  */
-extern inline FileEntry **ListFilesInDir(const char *dirpath, int *file_count);
+extern FileEntry **ListFilesInDir(const char *dirpath, int *file_count);
 
-/*
- * Given a file path, the function will check if the files exists or not
- *
- * @param filepath the path to the file that you want to check
+/**
+ * Check if a file exists
+ * @param filepath Path to check
+ * @return true if file exists, false otherwise
  */
-extern inline bool DoesFileExist(const char *filepath);
+extern bool DoesFileExist(const char *filepath);
 
+/**
+ * Free array of FileEntry structures
+ * @param entries Array to free
+ * @param file_count Number of entries in array
+ */
 extern void FreeFileEntries(FileEntry **entries, int file_count);
 
+/**
+ * Search files in directory using CUDA
+ * @param pattern Search pattern
+ * @param directory Directory to search
+ * @return true if pattern found, false otherwise
+ */
 extern bool cuda_search_files(const char *pattern, const char *directory);
 
 #endif // SEARCH_H

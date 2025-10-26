@@ -1,89 +1,189 @@
 #include "Pages/Topbar.h"
+#include <string.h>
 
-typedef struct {
-  GtkWidget *address_entry;
-  GtkWidget *search_entry;
-} TopBarPrivate;
+// Signal indices
+enum { SIGNAL_ADDRESS_CHANGED, SIGNAL_SEARCH_TRIGGERED, LAST_SIGNAL };
+
+static guint top_bar_signals[LAST_SIGNAL] = {0};
+
+static gboolean on_topbar_motion(GtkWidget *widget, GdkEventMotion *event,
+                                 gpointer user_data);
+
+// Initialize signals once
+static void ensure_signals_registered(GtkWidget *widget) {
+  if (top_bar_signals[SIGNAL_ADDRESS_CHANGED] == 0) {
+    top_bar_signals[SIGNAL_ADDRESS_CHANGED] =
+        g_signal_new("address-changed",            // signal_name
+                     G_TYPE_FROM_INSTANCE(widget), // itype
+                     G_SIGNAL_RUN_LAST,            // signal_flags
+                     0,                            // class_offset
+                     NULL,                         // accumulator
+                     NULL,                         // accu_data
+                     NULL,                         // c_marshaller
+                     G_TYPE_NONE,                  // return_type
+                     1,                            // n_params
+                     G_TYPE_STRING                 // param_types
+        );
+
+    top_bar_signals[SIGNAL_SEARCH_TRIGGERED] =
+        g_signal_new("search-triggered",           // signal_name
+                     G_TYPE_FROM_INSTANCE(widget), // itype
+                     G_SIGNAL_RUN_LAST,            // signal_flags
+                     0,                            // class_offset
+                     NULL,                         // accumulator
+                     NULL,                         // accu_data
+                     NULL,                         // c_marshaller
+                     G_TYPE_NONE,                  // return_type
+                     1,                            // n_params
+                     G_TYPE_STRING                 // param_types
+        );
+  }
+}
 
 // Callback when the address entry is activated
 static void on_address_entry_activate(GtkEntry *entry, gpointer user_data) {
-  GtkWidget *top_bar = GTK_WIDGET(user_data);
+  TopBarWidget *top_bar = (TopBarWidget *)user_data;
   const char *new_address = gtk_entry_get_text(entry);
 
-  // Emit the custom signal
-  g_signal_emit_by_name(top_bar, "address-changed", new_address);
+  // Only emit if address actually changed
+  if (!top_bar->current_address ||
+      strcmp(top_bar->current_address, new_address) != 0) {
+    // Update cached address
+    g_free(top_bar->current_address);
+    top_bar->current_address = g_strdup(new_address);
+
+    // Emit the address-changed signal
+    g_signal_emit(top_bar->m_TopBar,                       // instance
+                  top_bar_signals[SIGNAL_ADDRESS_CHANGED], // signal_id
+                  0,                                       // detail
+                  new_address);                            // ...
+  }
 }
 
 // Callback when the search entry is activated
 static void on_search_entry_activate(GtkEntry *entry, gpointer user_data) {
-  GtkWidget *top_bar = GTK_WIDGET(user_data);
+  TopBarWidget *top_bar = (TopBarWidget *)user_data;
   const char *search_text = gtk_entry_get_text(entry);
 
-  // Emit a custom "search" signal with the entered search text
-  g_signal_emit_by_name(top_bar, "search-triggered", search_text);
+  // Emit the search-triggered signal
+  g_signal_emit(top_bar->m_TopBar,                        // instance
+                top_bar_signals[SIGNAL_SEARCH_TRIGGERED], // signal_id
+                0,                                        // detail
+                search_text);                             // ...
 }
 
-GtkWidget *top_bar_new(const char *initial_address) {
-  GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+TopBarWidget *TopBar_new(const char *initial_address) {
+  // Allocate the struct
+  TopBarWidget *top_bar = g_new0(TopBarWidget, 1);
+
+  // Create the main container
+  top_bar->m_TopBar = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
 
   // Address entry
-  GtkWidget *address_entry = gtk_entry_new();
-  gtk_entry_set_text(GTK_ENTRY(address_entry),
-                     initial_address ? initial_address : "Address");
-  gtk_box_pack_start(GTK_BOX(box), address_entry, TRUE, TRUE, 5);
+  top_bar->address_entry = gtk_entry_new();
+  const char *addr = initial_address ? initial_address : "Address";
+  gtk_entry_set_text(GTK_ENTRY(top_bar->address_entry), addr);
+  top_bar->current_address = g_strdup(addr);
+  gtk_box_pack_start(GTK_BOX(top_bar->m_TopBar), // box
+                     top_bar->address_entry,     // child
+                     TRUE,                       // expand
+                     TRUE,                       // fill
+                     5);                         // padding
 
   // Search box
-  GtkWidget *search_entry = gtk_entry_new();
-  gtk_entry_set_placeholder_text(GTK_ENTRY(search_entry), "Search...");
-  gtk_box_pack_end(GTK_BOX(box), search_entry, FALSE, FALSE, 5);
+  top_bar->search_entry = gtk_entry_new();
+  gtk_entry_set_placeholder_text(GTK_ENTRY(top_bar->search_entry), "Search...");
 
-  // Store references
-  TopBarPrivate *private = g_new(TopBarPrivate, 1);
-  private->address_entry = address_entry;
-  private->search_entry = search_entry;
-  g_object_set_data_full(G_OBJECT(box), "top-bar-private", private, g_free);
+  // Fix hover issue on search
+  gtk_widget_add_events(top_bar->search_entry,
+                        GDK_POINTER_MOTION_MASK | GDK_LEAVE_NOTIFY_MASK);
+  g_signal_connect(top_bar->search_entry, "motion-notify-event",
+                   G_CALLBACK(on_topbar_motion), top_bar);
+  gtk_box_pack_end(GTK_BOX(top_bar->m_TopBar), // box
+                   top_bar->search_entry,      // child
+                   FALSE,                      // expand
+                   FALSE,                      // fill
+                   5);                         // padding
 
-  // Connect signals
-  g_signal_connect(address_entry, "activate",
-                   G_CALLBACK(on_address_entry_activate), box);
-  g_signal_connect(search_entry, "activate",
-                   G_CALLBACK(on_search_entry_activate), box);
+  // Register signals once
+  ensure_signals_registered(top_bar->m_TopBar);
 
-  // Register custom signals
-  g_signal_new("address-changed", G_TYPE_FROM_INSTANCE(box), G_SIGNAL_RUN_LAST,
-               0, NULL, NULL, NULL, G_TYPE_NONE, 1, G_TYPE_STRING);
-  g_signal_new("search-triggered", G_TYPE_FROM_INSTANCE(box), G_SIGNAL_RUN_LAST,
-               0, NULL, NULL, NULL, G_TYPE_NONE, 1, G_TYPE_STRING);
+  // Connect internal callbacks
+  g_signal_connect(top_bar->address_entry,                // instance
+                   "activate",                            // detailed_signal
+                   G_CALLBACK(on_address_entry_activate), // c_handler
+                   top_bar);                              // data
+  g_signal_connect(top_bar->search_entry,                 // instance
+                   "activate",                            // detailed_signal
+                   G_CALLBACK(on_search_entry_activate),  // c_handler
+                   top_bar);                              // data
 
-  return box;
+  // Store TopBarWidget pointer in the GtkWidget for cleanup
+  g_object_set_data_full(G_OBJECT(top_bar->m_TopBar), // object
+                         "top-bar-widget",            // key
+                         top_bar,                     // data
+                         NULL);                       // destroy
+
+  return top_bar;
 }
 
-void top_bar_set_address(GtkWidget *top_bar, const char *address) {
-  TopBarPrivate *private =
-      g_object_get_data(G_OBJECT(top_bar), "top-bar-private");
-  if (private && private->address_entry) {
-    gtk_entry_set_text(GTK_ENTRY(private->address_entry), address);
+void TopBar_destroy(TopBarWidget *top_bar) {
+  if (top_bar) {
+    g_free(top_bar->current_address);
+    // Widget will be destroyed by GTK when parent is destroyed
+    g_free(top_bar);
   }
 }
 
-const char *top_bar_get_address(GtkWidget *top_bar) {
-  TopBarPrivate *private =
-      g_object_get_data(G_OBJECT(top_bar), "top-bar-private");
-  return private ? gtk_entry_get_text(GTK_ENTRY(private->address_entry)) : NULL;
+void TopBar_set_address(TopBarWidget *top_bar, const char *address) {
+  if (!top_bar || !top_bar->address_entry)
+    return;
+
+  const char *addr = address ? address : "";
+
+  // Only update if changed
+  if (!top_bar->current_address ||
+      strcmp(top_bar->current_address, addr) != 0) {
+    gtk_entry_set_text(GTK_ENTRY(top_bar->address_entry), addr);
+
+    g_free(top_bar->current_address);
+    top_bar->current_address = g_strdup(addr);
+
+    // Emit signal
+    g_signal_emit(top_bar->m_TopBar,                       // instance
+                  top_bar_signals[SIGNAL_ADDRESS_CHANGED], // signal_id
+                  0,                                       // detail
+                  addr);                                   // ...
+  }
 }
 
-GtkWidget *top_bar_get_search_entry(GtkWidget *top_bar) {
-  TopBarPrivate *private =
-      g_object_get_data(G_OBJECT(top_bar), "top-bar-private");
-  return private ? private->search_entry : NULL;
+const char *TopBar_get_address(const TopBarWidget *top_bar) {
+  return (top_bar && top_bar->current_address) ? top_bar->current_address
+                                               : NULL;
 }
 
-void top_bar_connect_address_change(GtkWidget *top_bar, GCallback callback,
+void TopBar_connect_address_changed(TopBarWidget *top_bar, GCallback callback,
                                     gpointer user_data) {
-  g_signal_connect(top_bar, "address-changed", callback, user_data);
+  if (top_bar && top_bar->m_TopBar) {
+    g_signal_connect(top_bar->m_TopBar, // instance
+                     "address-changed", // detailed_signal
+                     callback,          // c_handler
+                     user_data);        // data
+  }
 }
 
-void top_bar_connect_search(GtkWidget *top_bar, GCallback callback,
-                            gpointer user_data) {
-  g_signal_connect(top_bar, "search-triggered", callback, user_data);
+void TopBar_connect_search(TopBarWidget *top_bar, GCallback callback,
+                           gpointer user_data) {
+  if (top_bar && top_bar->m_TopBar) {
+    g_signal_connect(top_bar->m_TopBar,  // instance
+                     "search-triggered", // detailed_signal
+                     callback,           // c_handler
+                     user_data);         // data
+  }
+}
+
+static gboolean on_topbar_motion(GtkWidget *widget, GdkEventMotion *event,
+                                 gpointer user_data) {
+  gtk_widget_queue_draw(widget);
+  return FALSE;
 }
