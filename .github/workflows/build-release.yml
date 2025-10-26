@@ -192,11 +192,6 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Setup Zig
-      uses: goto-bus-stop/setup-zig@v2
-      with:
-        version: 0.14.0
-
     - name: Install dependencies (MSYS2)
       uses: msys2/setup-msys2@v2
       with:
@@ -205,11 +200,21 @@ jobs:
         install: >-
           mingw-w64-x86_64-gtk3
           mingw-w64-x86_64-pkg-config
+          unzip
+          wget
+
+    - name: Install Zig in MSYS2
+      shell: msys2 {0}
+      run: |
+        wget https://ziglang.org/download/0.14.0/zig-windows-x86_64-0.14.0.zip
+        unzip zig-windows-x86_64-0.14.0.zip
+        mv zig-windows-x86_64-0.14.0 /c/zig
+        echo "/c/zig" >> $GITHUB_PATH
 
     - name: Build application
       shell: msys2 {0}
       run: |
-        export PATH="/mingw64/bin:$PATH"
+        export PATH="/c/zig:/mingw64/bin:$PATH"
         zig build -Doptimize=ReleaseFast
 
     - name: Collect dependencies
@@ -267,10 +272,16 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Setup Zig
-      uses: goto-bus-stop/setup-zig@v2
-      with:
-        version: 0.14.0
+    - name: Install Zig manually
+      run: |
+        wget https://ziglang.org/download/0.14.0/zig-macos-x86_64-0.14.0.tar.xz
+        tar -xf zig-macos-x86_64-0.14.0.tar.xz
+        sudo mv zig-macos-x86_64-0.14.0 /usr/local/zig
+        echo "/usr/local/zig" >> $GITHUB_PATH
+
+    - name: Verify Zig version
+      run: |
+        /usr/local/zig/zig version
 
     - name: Install dependencies
       run: |
@@ -278,7 +289,7 @@ jobs:
 
     - name: Build application
       run: |
-        zig build -Doptimize=ReleaseFast
+        /usr/local/zig/zig build -Doptimize=ReleaseFast
 
     - name: Create app bundle
       run: |
