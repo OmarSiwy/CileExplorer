@@ -7,7 +7,7 @@ pkgs.mkShell {
     git
     gcc
     gnumake
-    zig
+    zig_0_14
 
     # GTK3 and dependencies
     gtk3
