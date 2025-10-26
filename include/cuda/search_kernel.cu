@@ -87,7 +87,6 @@ __global__ void rabin_karp_kernel(const char *text,
     }
 }
 
-// Optimized batch kernel - processes multiple files in parallel
 __global__ void batch_rabin_karp_kernel(char **texts,
                                         unsigned long *text_lens,
                                         int file_count,
