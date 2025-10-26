@@ -157,7 +157,7 @@ jobs:
 
     - name: Create AppImage
       run: |
-        ./appimagetool-x86_64.AppImage CileExplorer.AppDir CileExplorer-x86_64.AppImage
+        ./appimagetool-x86_64.AppImage --appimage-extract-and-run CileExplorer.AppDir CileExplorer-x86_64.AppImage
         chmod +x CileExplorer-x86_64.AppImage
 
     - name: Calculate checksum
